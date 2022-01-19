@@ -1,2 +1,4 @@
 # config file
 config.py
+infile.txt
+log*
