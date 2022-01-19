@@ -1,0 +1,4 @@
+1.1.1.1,IP,test
+test.com,Domain,test
+192.168.0.0/24,CIDR,test
+www.bbc.co.uk/news,URL,test
