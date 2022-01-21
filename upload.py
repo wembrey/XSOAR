@@ -5,7 +5,7 @@ import requests
 import json
 import sys
 import datetime
-logfile = 'Log File\n'
+
 
 #Import the conig file that has the connection details
 import config
@@ -41,7 +41,6 @@ def check_indicator(query_value):
         response = requests.request("POST", url, headers=headers, data=payload)
         if len(response.json()['iocObjects']) == 0:
             result = 'clear'
-            print(f'Query check results for {query_value}: no match found')
             return result, tags_list
         elif 'CustomFields' not in response.json()['iocObjects'][0]:
             value = response.json()['iocObjects'][0]['value']
@@ -132,7 +131,7 @@ def get_indicators(infile):
         f = open(infile, 'r')
         indicators = f.read()
         indicator_list = indicators.split('\n')
-        print(f'\nindicators imported from file: {infile}')
+        print(f'\nindicators imported from file')
         f.close()
     except Exception as e:
         print(f'\nFile open of {infile} failed with error:\n{e}')
@@ -150,12 +149,6 @@ def get_indicators(infile):
                 print(f'\nMapping failed for "{indicator}" at line {x} with error:\n{e}')
                 sys.exit()
 
-    for items in data_list:
-        print(f'{items}')
-    command = input(
-        '\nIf these are wrong - press q to finish and start again or press [Enter] to continue: ')
-    if str.lower(command) == 'q':
-        sys.exit()
     return data_list
 
 
@@ -163,22 +156,18 @@ def get_indicators(infile):
 def write_logfile(infile):
     global logfile
     filename = infile + datetime.datetime.now().strftime("log_%d_%m_%Y_%H_%M.log")
-    command = input('Write log file? (y/n)')
-    if str.lower(command) != 'y':
-        print(logfile)
-        sys.exit()
     try:
         print(f'Opening {filename}')
         f = open(filename, 'w')
         print(f'Writing data to file')
         f.write(logfile)
         print('Closing\n')
-        print(logfile)
+        #print(logfile)
         f.close()
     except Exception as e:
         print(f'Operation failed with error:\n{e}')
         error_log = error_log + '\n' + str(e)
-        print(logfile)
+        #print(logfile)
         print('\nExiting now')
         sys.exit()
 
@@ -190,6 +179,7 @@ def main():
         print(f'Please specify a filename for import')
         sys.exit()
     for item in args:
+        logfile = 'Log File\n'
         data_list = get_indicators(item)
         add_indicator(data_list)
         write_logfile(item)
