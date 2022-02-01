@@ -83,6 +83,13 @@ def add_indicator(data_list):
                 tag_set = set(tag_list)
                 tag_list = list(tag_set)
                 tag_list.sort()
+            elif result == 'clear':
+                print(f'No entry found for {entry["value"]}')
+            elif result != entry['value']:
+                my_alert = 'Mismatch alert: ' + str({entry['value']}) \
+                + 'returned: ' + str({result})
+                logfile = logfile + my_alert
+                print(my_alert)
         except Exception as e:
             print(f'\ncheck_indicator failed with error:\n{e}')
             logfile = logfile + str(e)
@@ -183,6 +190,7 @@ def main():
         data_list = get_indicators(item)
         add_indicator(data_list)
         write_logfile(item)
+        print(logfile)
 
 
 if __name__ == "__main__":
