@@ -27,8 +27,10 @@ def check_indicator(query_value):
     result = 'none'
     tags_list = []
     # set the payload
+    querystring = "value:" + str(query_value)
+
     json_payload = {
-        "query": query_value
+        "query": querystring
         }
 
     payload = json.dumps(json_payload)
@@ -169,7 +171,7 @@ def write_logfile(infile):
         print(f'Writing data to file')
         f.write(logfile)
         print('Closing\n')
-        #print(logfile)
+        print(logfile)
         f.close()
     except Exception as e:
         print(f'Operation failed with error:\n{e}')
