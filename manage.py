@@ -52,29 +52,38 @@ def check_indicator(query_value):
 
     try:
         response = requests.request("POST", url, headers=headers, data=payload)
-        if len(response.json()['iocObjects']) == 0:
+        #Check if more than one item is returned and get correct one
+        if len(response.json()['iocObjects']) > 1:
+            for item in response.json()['iocObjects']:
+                if item['value']!= query_value:
+                    pass
+                elif item['value'] == query_value:
+                    iocobject = item
+        #if none returned - it's clear
+        elif len(response.json()['iocObjects']) == 0:
             result = 'clear'
             return result, tags_list
-        elif 'CustomFields' not in response.json()['iocObjects'][0]:
-            value = response.json()['iocObjects'][0]['value']
+
+        elif len(response.json()['iocObjects']) == 1:
             iocobject = response.json()['iocObjects'][0]
+
+        if 'CustomFields' not in iocobject:
+            value = iocobject['value']
             iocobject['CustomFields'] = {'tags': []}
             logfile+='\n' + value + ' found but with no tags: '
             print(f'{query_value}: found with no tags')
             return (value, iocobject)
-        elif 'tags' not in response.json()['iocObjects'][0]['CustomFields']:
-            value = response.json()['iocObjects'][0]['value']
-            iocobject = response.json()['iocObjects'][0]
+        elif 'tags' not in iocobject['CustomFields']:
+            value = iocobject['value']
             iocobject['CustomFields'] = {'tags': []}
             logfile+='\n' + value + ' found but with no tags: '
             print(f'{query_value}: found with no tags')
             return (value, iocobject)
         else:
-            value = response.json()['iocObjects'][0]['value']
-            tags_list = response.json()['iocObjects'][0]['CustomFields']['tags']
+            value = iocobject['value']
+            tags_list = iocobject['CustomFields']['tags']
             logfile+='\n' + value + ' found with tags: ' + str(tags_list)
             print(f'{query_value}: found with tags: {str(tags_list)}')
-            iocobject = response.json()['iocObjects'][0]
             return (value, iocobject)
     except Exception as e:
         print(f'\nIndicator checking module Failed with error:\n{e}')
