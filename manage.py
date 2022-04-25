@@ -1,10 +1,11 @@
 #!/usr/bin/env python
-
+version = '1.1'
 #import the modules we need
 import requests
 import json
 import sys
 import datetime
+import os
 
 colors = {
         'blue': '\033[94m',
@@ -18,6 +19,9 @@ def highlight(string, color):
     if not color in colors: return string
     return colors[color] + string + '\033[0m'
 
+#os.system('clear')
+#print(f'Manage.py upload script version: {version}')
+
 #Import the conig file that has the connection details
 import config
 
@@ -26,7 +30,7 @@ tenant = config.tenant
 apikey = config.apikey
 
 #set the URL for the API
-host = 'https://' + tenant + '.dev.demisto.live'
+host = 'https://' + tenant + '.demisto.live'
 endpoint_create = '/indicator/create'
 endpoint_search = '/indicators/search'
 endpoint_edit = '/indicator/edit'
@@ -37,8 +41,13 @@ def check_indicator(query_value):
     url = host + endpoint_search
     result = 'none'
     tags_list = []
-    # set the payload
-    querystring = "value:" + str(query_value)
+    # deal with tilde "~" in the URL
+    if '~' in query_value:
+        querystring = query_value[0:query_value.find('~')] + '*'
+        #print(f'Q is now: {querystring}')
+    else:
+        # set the payload
+        querystring = "value:" + str(query_value)
 
     json_payload = {
         "query": querystring
@@ -54,54 +63,73 @@ def check_indicator(query_value):
         response = requests.request("POST", url, headers=headers, data=payload)
         #Check if more than one item is returned and get correct one
         if len(response.json()['iocObjects']) > 1:
+            print(f'more than one match found for {query_value}')
+            matched = False
+            iocObjects = response.json()['iocObjects']
+            #print(f'\n\n{len(iocObjects)} items matched\n\n')
+            # Look for a match for query_value in the returned objects
             for item in response.json()['iocObjects']:
                 if item['value']!= query_value:
                     pass
                 elif item['value'] == query_value:
+                    matched = True
                     iocobject = item
+                    value = iocobject['value']
+            # If none of them matches
+            if not matched:
+                result = 'clear'
+                return result, tags_list
         #if none returned - it's clear
         elif len(response.json()['iocObjects']) == 0:
+            print(f'no results returned for {query_value}')
             result = 'clear'
             return result, tags_list
 
         elif len(response.json()['iocObjects']) == 1:
+            print(f'one match returned for {query_value}')
             iocobject = response.json()['iocObjects'][0]
+            value = iocobject['value']
+            if iocobject['value'] != query_value:
+                #print(f'Wrong value returned for {query_value} vs {value}')
+                result = 'clear'
+                return result, tags_list
 
         if 'CustomFields' not in iocobject:
-            value = iocobject['value']
             iocobject['CustomFields'] = {'tags': []}
             logfile+='\n' + value + ' found but with no tags: '
-            print(f'{query_value}: found with no tags')
+            #print(f'{query_value}: found with no tags')
             return (value, iocobject)
         elif 'tags' not in iocobject['CustomFields']:
-            value = iocobject['value']
             iocobject['CustomFields'] = {'tags': []}
             logfile+='\n' + value + ' found but with no tags: '
-            print(f'{query_value}: found with no tags')
+            #print(f'{query_value}: found with no tags')
             return (value, iocobject)
         else:
-            value = iocobject['value']
             tags_list = iocobject['CustomFields']['tags']
             logfile+='\n' + value + ' found with tags: ' + str(tags_list)
-            print(f'{query_value}: found with tags: {str(tags_list)}')
+            #print(f'{query_value}: found with tags: {str(tags_list)}')
             return (value, iocobject)
     except Exception as e:
-        print(f'\nIndicator checking module Failed with error:\n{e}')
-        logfile = logfile + str(e)
+        print(f'\nIndicator check error for: {query_value}:\n{e}')
+        logfile = logfile + '\n\nIndicator checking Error with: ' + \
+        query_value + ':' + str(e) + '\n\n'
 
 
 def add_indicator(url, payload, headers, value):
     global logfile
     try:
         response = requests.request("POST", url, headers=headers, data=payload)
+        '''
         if response.ok == True:
             value = response.json()['value']
             logfile+='\n' + value + ' - OK'
         else:
             logfile+='\n' + value + ' - Failed'
+            '''
     except Exception as e:
         print(f'\nAdd Indicator failed with error:\n{e}')
-        logfile = logfile + str(e)
+        logfile = logfile + '\n\nadd_indicator failed for ' + \
+            value + ': ' + str(e) + '\n\n'
 
 
 def update_indicator(url, payload, headers, tag_set):
@@ -118,9 +146,12 @@ def update_indicator(url, payload, headers, tag_set):
     except Exception as e:
         print(f'\nUpdate Indicator failed with error:\n{e}')
         logfile = logfile + str(e)
+        logfile = logfile + '\n\nupdate_indicator failed for ' + \
+            str(payload) + ': ' + str(e) + '\n\n'
 
 # define a function to send the API call
-def process_indicator(data_list):
+def process_indicator(data_list, infile):
+    errors = 0
     global logfile
     x = 0
     y = 0
@@ -128,6 +159,8 @@ def process_indicator(data_list):
 
         #build the payload string for the indicator in json
         indicator_type = entry['type']
+        if indicator_type == 'ip':
+            indicator_type = 'IP'
         sourcebrands = ["local-database"]
         tag_1 = 'unvalidated'
         tag_2 = 'local-db'
@@ -136,10 +169,7 @@ def process_indicator(data_list):
         tag_list.extend(tags)
 
         # check if it already exists and get the tags
-        try:
-            result, iocobject = check_indicator(entry['value'])
-            if result == entry['value']:
-                iocobject['CustomFields']['tags'].extend(tag_list)
+
                 tag_set = set(iocobject['CustomFields']['tags'])
                 iocobject['CustomFields']['tags'] = list(tag_set)
                 iocobject['CustomFields']['tags'].sort()
@@ -179,13 +209,14 @@ def process_indicator(data_list):
                 add_indicator(url, payload, headers, value)
                 x += 1
         except Exception as e:
+            errors += 1
             print(f'\nprocess_indicator failed with error:\n{e}')
-            logfile = logfile + str(e)
+            logfile = logfile + '\nupdate_indicator failed: ' + \
+            str(entry) + str(e)
 
-    logstring = f'\n\nFinished job: {highlight(str(x),"red")}' \
-        f' {highlight("indicators added","red")}' \
-        f'  and {highlight(str(y) + " updated","yellow")} .'
-    print(logstring)
+    logstring = f'\n\nFinished job for {infile}: {str(x)}' \
+        f' indicators added, {str(y)} updated and {errors} errors.'
+    print(highlight(logstring, 'yellow'))
     logfile = logfile + logstring
 
 # define a function to get indicators and load to dictionary
@@ -198,7 +229,8 @@ def get_indicators(infile):
         f = open(infile, 'r')
         indicators = f.read()
         indicator_list = indicators.split('\n')
-        print(f'\nindicators imported from file')
+        print(highlight( \
+            f'\n{len(indicator_list)} Indicators imported from file', 'yellow'))
         f.close()
     except Exception as e:
         print(f'\nFile open of {infile} failed with error:\n{e}')
@@ -212,7 +244,7 @@ def get_indicators(infile):
             try:
                 input_list = indicator.split(',')
                 value, type, = input_list[0], input_list[1]
-                tags = input_list[2:]
+                tags = [x.lower() for x in input_list[2:]]
                 data_list.append({"value": value, "type": type, "tags": tags})
                 #print(f'Data list: {data_list}')
             except Exception as e:
@@ -231,6 +263,7 @@ def write_logfile(infile):
         f = open(filename, 'w')
         print(f'Writing data to file')
         f.write(logfile)
+        f.write('\nEnd of log file: ' + filename + '\n\n')
         print('Closing\n')
         print(logfile)
         f.close()
@@ -248,11 +281,11 @@ def main():
     if len(args) < 1:
         print(f'Please specify a filename for import')
         sys.exit()
-    for item in args:
+    for infile in args:
         logfile = 'Log File\n'
-        data_list = get_indicators(item)
-        process_indicator(data_list)
-        write_logfile(item)
+        data_list = get_indicators(infile)
+        process_indicator(data_list, infile)
+        write_logfile(infile)
         #print(logfile)
 
 
